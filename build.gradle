@@ -1,20 +1,159 @@
-// Apply the java-library plugin to add support for Java Library
 apply plugin: 'java-library'
+apply plugin: 'groovy'
+apply plugin: 'maven'
+apply plugin: 'signing'
 
-// In this section you declare where to find the dependencies of your project
+group 'com.miragesql'
+version '2.1.0-SNAPSHOT'
+
+compileJava.options.encoding = 'UTF-8'
+sourceCompatibility = 1.8
+targetCompatibility = 1.8
+
 repositories {
-    // Use jcenter for resolving your dependencies.
-    // You can declare any Maven/Ivy/file repository here.
     jcenter()
+    maven {
+        url "https://oss.sonatype.org/content/repositories/snapshots/"
+    }
 }
 
+
 dependencies {
-    // This dependency is exported to consumers, that is to say found on their compile classpath.
-    api 'org.apache.commons:commons-math3:3.6.1'
+    compile 'com.miragesql:miragesql:2.1.0-SNAPSHOT'
 
-    // This dependency is used internally, and not exposed to consumers on their own compile classpath.
-    implementation 'com.google.guava:guava:23.0'
+    compile 'org.slf4j:slf4j-api:1.7.25'
 
-    // Use JUnit test framework
+    compileOnly 'org.apache.ant:ant:1.10.1'                              // provided
+
     testImplementation 'junit:junit:4.12'
+    testImplementation 'org.mockito:mockito-core:2.12.0'
+    testImplementation 'com.h2database:h2:1.4.196'
+    testImplementation 'org.hsqldb:hsqldb:2.4.0'
+
+    // Use the latest Groovy version for Spock testing
+    testImplementation 'org.codehaus.groovy:groovy-all:2.4.12'
+    // Use the awesome Spock testing and specification framework even with Java
+    testImplementation 'org.spockframework:spock-core:1.0-groovy-2.4'
+
+}
+
+// JavaDoc 8 problems
+javadoc { failOnError false }
+
+jar {
+    manifest {
+        attributes('Implementation-Title': project.name,
+                'Implementation-Version': project.version,
+                'Built-Date': new Date(),
+                'Built-JDK': System.getProperty('java.version'),
+                'Built-Gradle': gradle.gradleVersion,
+                'Target-JDK': project.targetCompatibility)
+    }
+}
+
+task javadocJar(type: Jar) {
+    classifier = 'javadoc'
+    from javadoc
+}
+
+task sourcesJar(type: Jar) {
+    classifier = 'sources'
+    from sourceSets.main.allSource
+}
+
+artifacts {
+    archives javadocJar, sourcesJar
+}
+
+signing {
+    sign configurations.archives
+}
+
+def getPom(project) {
+    return {
+        name 'Mirage-SQL Tools'
+        packaging 'jar'
+        // optionally artifactId can be defined here
+        description 'Mirage-SQL Tools is a set of tools to help the development of Mirage-SQL based applications.'
+        url 'https://github.com/mirage-sql/mirage-tools'
+
+        organization {
+            name 'Mirage-SQL'
+            url 'https://github.com/mirage-sql/'
+        }
+
+        scm {
+            connection 'scm:git:https://github.com/mirage-sql/mirage-tools.git'
+            developerConnection 'scm:git:https://github.com/mirage-sql/mirage-tools.git'
+            url 'https://github.com/mirage-sql/mirage-tools'
+        }
+
+        issueManagement {
+            system 'GitHub Issues'
+            url 'https://github.com/mirage-sql/mirage/issues'
+        }
+        licenses {
+            license {
+                name 'The Apache License, Version 2.0'
+                url 'http://www.apache.org/licenses/LICENSE-2.0.txt'
+            }
+        }
+
+        developers {
+            developer {
+                id 'takezoe'
+                name 'Naoki Takezoe'
+                email 'takezoe_at_gmail.com'
+                url 'http://d.hatena.ne.jp/takezoe/'
+                timezone '+9'
+            }
+            developer {
+                id 'daisuke'
+                name 'Daisuke Miyamoto'
+                email 'dai.0304_at_gmail.com'
+                url 'http://d.hatena.ne.jp/daisuke-m/'
+                timezone '+9'
+            }
+            developer {
+                id 'aadrian'
+                name 'Adrian A.'
+                email 'a.adrian.tech_at_gmail.com'
+                url 'https://github.com/aadrian'
+                timezone '+1'
+            }
+        }
+    }
+}
+
+// set these to 'dummy' for Travis CI
+def stUser = hasProperty('ossrhUsername')? ossrhUsername: 'dummy'
+def stPwd = hasProperty('ossrhPassword')? ossrhPassword: 'dummy'
+
+uploadArchives {
+    repositories {
+        mavenDeployer {
+            beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
+
+            repository(url: "https://oss.sonatype.org/service/local/staging/deploy/maven2/") {
+                authentication(userName: stUser, password: stPwd)
+            }
+
+            snapshotRepository(url: "https://oss.sonatype.org/content/repositories/snapshots/") {
+                authentication(userName: stUser, password: stPwd)
+            }
+
+            pom {
+                project getPom(project)
+            }
+        }
+    }
+}
+
+// note: this task still does not display 'provided' and 'optional' correctly
+task writeNewPom {
+    doLast {
+        pom {
+            project getPom(project)
+        }.writeTo("$buildDir/newpom.xml")
+    }
 }
