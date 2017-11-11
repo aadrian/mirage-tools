@@ -146,6 +146,12 @@ import org.apache.tools.ant.Task;
  *     <td>Ignore table name as regular expression</td>
  *     <td>&nbsp;</td>
  *   </tr>
+ *   <tr>
+ *     <td>lang</td>
+ *     <td>&nbsp;</td>
+ *     <td>The programming language this code is generated for.</td>
+ *     <td>java</td>
+ *   </tr>
  * </table>
  *
  *
@@ -169,6 +175,7 @@ public class EntityGenTask extends Task {
     private String schema = null;
     private String tableNamePattern = "";
     private String ignoreTableNamePattern = "";
+    private String lang = "java";
 
     /**
      * Sets the Dialect class name.
@@ -308,6 +315,15 @@ public class EntityGenTask extends Task {
         this.ignoreTableNamePattern = ignoreTableNamePattern;
     }
 
+    /**
+     * Sets the language to generate to. The default value is 'java'.
+     *
+     * @param lang the language to generate to. Supported are 'java' and 'groovy'
+     */
+    public void setLang(String lang) {
+        this.lang = lang;
+    }
+
     @Override
     public void execute() throws BuildException {
         // validate parameters
@@ -343,10 +359,10 @@ public class EntityGenTask extends Task {
             Connection conn = createConnection();
 
             try {
-                System.out.println("Generating entities...");
+                System.out.println("Generating entities for language "+lang+"...");
 
                 entityGen.saveAllEntitySources(new File(outputDir), charset, conn, this.catalog, this.schema,
-                        tableNamePattern, ignoreTableNamePattern);
+                        tableNamePattern, ignoreTableNamePattern, lang);
             } finally {
                 JdbcUtil.close(conn);
             }

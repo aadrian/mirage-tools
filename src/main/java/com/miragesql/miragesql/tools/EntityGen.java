@@ -118,9 +118,50 @@ public class EntityGen {
      * @return the source
      *
      * @throws SQLException if a something goes wrong when working with the database
+     *
+     * @deprecated use {@link #getEntitySource(Connection, String, String, String, String)}
      */
     public String getEntitySource(Connection conn,
             String tableName, String catalog, String schema) throws SQLException {
+        return getJavaEntitySource(conn, tableName, catalog, schema);
+    }
+
+    /**
+     * Returns the source code of the entity class which corresponds to the specified table.
+     *
+     * @param conn the DB connection
+     * @param tableName the DB table name
+     * @param catalog the DB catalog
+     * @param schema the DB schema
+     * @param lang the language to generate to. Supported are 'java' and 'groovy'
+     *
+     * @return the source
+     *
+     * @throws SQLException if a something goes wrong when working with the database
+     */
+    public String getEntitySource(Connection conn,
+                                  String tableName, String catalog, String schema, String lang) throws SQLException {
+        validateLang(lang);
+        if("groovy".equals(lang)){
+            return getGroovyEntitySource(conn, tableName, catalog, schema);
+        }
+        return getJavaEntitySource(conn, tableName, catalog, schema);
+    }
+
+    /**
+     * Returns the Java source code of the entity class which corresponds to the specified table.
+     *
+     * @param conn the DB connection
+     * @param tableName the DB table name
+     * @param catalog the DB catalog
+     * @param schema the DB schema
+     *
+     * @return the source
+     *
+     * @throws SQLException if a something goes wrong when working with the database
+     */
+    protected String getJavaEntitySource(Connection conn,
+                                  String tableName, String catalog, String schema) throws SQLException {
 
         StringBuilder sb = new StringBuilder();
 
@@ -183,6 +224,95 @@ public class EntityGen {
     }
 
     /**
+     * Returns the Groovy source code of the entity class which corresponds to the specified table.
+     *
+     * @param conn the DB connection
+     * @param tableName the DB table name
+     * @param catalog the DB catalog
+     * @param schema the DB schema
+     *
+     * @return the source
+     *
+     * @throws SQLException if a something goes wrong when working with the database
+     */
+    protected String getGroovyEntitySource(Connection conn,
+                                       String tableName, String catalog, String schema) throws SQLException {
+
+        StringBuilder sb = new StringBuilder();
+
+        // package declaration
+        sb.append("package ").append(packageName).append(LINE_SEPARATOR);
+        sb.append(LINE_SEPARATOR);
+
+        // import statements
+        appendImportGroovy(sb, Table.class);
+        appendImportGroovy(sb, Column.class);
+        appendImportGroovy(sb, PrimaryKey.class);
+        appendImportGroovy(sb, GenerationType.class);
+        sb.append(LINE_SEPARATOR);
+
+        // class declaration
+        sb.append("@Table(name=\"").append(tableName).append("\")").append(LINE_SEPARATOR);
+        sb.append("class ").append(tableToEntity(tableName)).append(" {").append(LINE_SEPARATOR);
+        sb.append(LINE_SEPARATOR);
+
+        // Entity properties
+        DatabaseMetaData meta = conn.getMetaData();
+        List<String> primaryKeys = new ArrayList<>();
+
+        ResultSet keys = meta.getPrimaryKeys(catalog, schema, tableName);
+        while(keys.next()){
+            String columnName = keys.getString("COLUMN_NAME");
+            primaryKeys.add(columnName);
+        }
+        keys.close();
+
+        ResultSet columns = meta.getColumns(catalog, schema, tableName, "%");
+        while(columns.next()){
+            String columnName = columns.getString("COLUMN_NAME");
+            int sqlType = columns.getInt("DATA_TYPE");
+
+            if(primaryKeys.contains(columnName)){
+                sb.append("    @PrimaryKey");
+                if(generationType == null){
+                    generationType = GenerationType.APPLICATION;
+                }
+                sb.append("(generationType=GenerationType.").append(generationType.name());
+                if(generationType == GenerationType.SEQUENCE){
+                    sb.append(", generator=\"").append(tableName).append("_").append(columnName).append("_SEQ\"");
+                }
+                sb.append(")");
+                sb.append(LINE_SEPARATOR);
+            }
+
+            sb.append("    @Column(name=\"").append(columnName).append("\")").append(LINE_SEPARATOR);
+
+            sb.append("    ").append(getJavaTypeName(sqlType)).append(" ").
+                    append(nameConverter.columnToProperty(columnName)).append(LINE_SEPARATOR);
+
+            sb.append(LINE_SEPARATOR);
+        }
+        columns.close();
+
+        sb.append("}").append(LINE_SEPARATOR);
+        return sb.toString();
+    }
+
+    /**
+     * Validates the 'lang' parameter.
+     *
+     * @param lang the language to generate to. Supported are 'java' and 'groovy'
+     *
+     * @return true if the parameter is valid
+     */
+    protected static boolean validateLang(String lang) {
+        if(lang == null || !("java".equals(lang) || "groovy".equals(lang))) {
+            throw new IllegalArgumentException("Argument 'lang' must be 'java' or 'groovy' only!");
+        }
+        return true;
+    }
+
+    /**
      * Generates the entity source file into the given source directory.
      *
      * @param srcDir directory where to generate the Java sources.
@@ -191,16 +321,17 @@ public class EntityGen {
      * @param tableName the DB table name
      * @param catalog the DB catalog
      * @param schema the DB schema
+     * @param lang the language to generate to. Supported are 'java' and 'groovy'
      *
      * @throws SQLException if a something goes wrong when working with the database
      * @throws IOException if the java file can't be written
      */
     public void saveEntitySource(File srcDir, String charset, Connection conn,
-            String tableName, String catalog, String schema) throws SQLException, IOException {
+            String tableName, String catalog, String schema, String lang) throws SQLException, IOException {
 
         String source = getEntitySource(conn, tableName, catalog, schema);
         String packageDir = packageName.replace('.', '/');
-        String fileName = packageDir + "/" + tableToEntity(tableName) + ".java";
+        String fileName = packageDir + "/" + tableToEntity(tableName) + "."+lang;
 
         File file = new File(srcDir, fileName);
         createDir(file.getParentFile());
@@ -221,12 +352,13 @@ public class EntityGen {
      * @param schemaS the String
      * @param tableNamePattern positive pattern for the tables to generate entities for
      * @param ignoreTableNamePattern negative pattern for the table NOT to generate entities for
+     * @param lang the language to generate to. Supported are 'java' and 'groovy'
      *
      * @throws SQLException if a something goes wrong when working with the database
      * @throws IOException if the Java files can't be written
      */
     public void saveAllEntitySources(File srcDir, String charset, Connection conn,String catalogS, String schemaS,
-                                     String tableNamePattern, String ignoreTableNamePattern) throws SQLException, IOException {
+                                     String tableNamePattern, String ignoreTableNamePattern, String lang) throws SQLException, IOException {
 
         DatabaseMetaData meta = conn.getMetaData();
         ResultSet rs = meta.getTables(catalogS, schemaS, "%", new String[]{"TABLE"});
@@ -246,7 +378,7 @@ public class EntityGen {
                 continue;
             }
 
-            this.saveEntitySource(srcDir, charset, conn, tableName, catalog, schema);
+            this.saveEntitySource(srcDir, charset, conn, tableName, catalog, schema, lang);
 
             System.out.println(String.format("  %s.%s", schema, tableName));
         }
@@ -288,6 +420,10 @@ public class EntityGen {
 
     private static void appendImport(StringBuilder sb, Class<?> clazz){
         sb.append("import ").append(clazz.getName().replace('$', '.')).append(";").append(LINE_SEPARATOR);
+    }
+
+    private static void appendImportGroovy(StringBuilder sb, Class<?> clazz){
+        sb.append("import ").append(clazz.getName().replace('$', '.')).append(LINE_SEPARATOR);
     }
 
     private static String tableToEntity(String tableName){
