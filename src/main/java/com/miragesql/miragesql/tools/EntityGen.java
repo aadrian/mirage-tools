@@ -144,6 +144,8 @@ public class EntityGen {
         validateLang(lang);
         if("groovy".equals(lang)){
             return getGroovyEntitySource(conn, tableName, catalog, schema);
+        } else if("xml".equals(lang)){
+            return getXmlEntitySource(conn, tableName, catalog, schema);
         }
         return getJavaEntitySource(conn, tableName, catalog, schema);
     }
@@ -299,15 +301,79 @@ public class EntityGen {
     }
 
     /**
+     * Returns the XML source code of the entity class which corresponds to the specified table.
+     *
+     * @param conn the DB connection
+     * @param tableName the DB table name
+     * @param catalog the DB catalog
+     * @param schema the DB schema
+     *
+     * @return the source
+     *
+     * @throws SQLException if a something goes wrong when working with the database
+     */
+    protected String getXmlEntitySource(Connection conn,
+                                           String tableName, String catalog, String schema) throws SQLException {
+
+        StringBuilder sb = new StringBuilder();
+
+        // header declaration
+        sb.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>").append(LINE_SEPARATOR);
+
+        // class declaration
+        sb.append("<entity name=\"").append(tableToEntity(tableName)).append("\" ");
+        sb.append("table=\"").append(tableName).append("\">").append(LINE_SEPARATOR);
+
+        // Entity properties
+        DatabaseMetaData meta = conn.getMetaData();
+        List<String> primaryKeys = new ArrayList<>();
+
+        ResultSet keys = meta.getPrimaryKeys(catalog, schema, tableName);
+        while(keys.next()){
+            String columnName = keys.getString("COLUMN_NAME");
+            primaryKeys.add(columnName);
+        }
+        keys.close();
+
+        ResultSet columns = meta.getColumns(catalog, schema, tableName, "%");
+        while(columns.next()){
+            String columnName = columns.getString("COLUMN_NAME");
+            int sqlType = columns.getInt("DATA_TYPE");
+
+            StringBuilder sbPk = new StringBuilder();
+            if(primaryKeys.contains(columnName)){
+                sbPk.append(" pk=\"true\"");
+                if(generationType == null){
+                    generationType = GenerationType.APPLICATION;
+                }
+                sbPk.append(" generation=\"").append(generationType.name()).append("\"");
+                if(generationType == GenerationType.SEQUENCE){
+                    sbPk.append(" generator=\"").append(tableName).append("_").append(columnName).append("_SEQ\"");
+                }
+            }
+
+            sb.append("  <attribute name=\"").append(nameConverter.columnToProperty(columnName)).append("\" type=\"")
+                    .append(getJavaTypeName(sqlType).toLowerCase()).append("\">").append(LINE_SEPARATOR);
+            sb.append("    <column name=\"").append(columnName).append("\"").append(sbPk).append("/>").append(LINE_SEPARATOR);
+
+            sb.append("  </attribute>").append(LINE_SEPARATOR);
+        }
+        columns.close();
+
+        sb.append("</entity>").append(LINE_SEPARATOR);
+        return sb.toString();
+    }
+
+    /**
      * Validates the 'lang' parameter.
      *
-     * @param lang the language to generate to. Supported are 'java' and 'groovy'
+     * @param lang the language to generate to. Supported are 'java', 'groovy' and 'xml'
      *
      * @return true if the parameter is valid
      */
     protected static boolean validateLang(String lang) {
-        if(lang == null || !("java".equals(lang) || "groovy".equals(lang))) {
-            throw new IllegalArgumentException("Argument 'lang' must be 'java' or 'groovy' only!");
+        if(lang == null || !("java".equals(lang) || "groovy".equals(lang) || "xml".equals(lang))) {
+            throw new IllegalArgumentException("Argument 'lang' must be 'java', 'groovy' or 'xml' only!");
         }
         return true;
     }

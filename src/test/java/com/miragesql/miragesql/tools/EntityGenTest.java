@@ -46,4 +46,20 @@ public class EntityGenTest extends AbstractDatabaseTest {
 		assertEquals(expect, result);
 	}
 
+	public void testGetXmlEntitySource() throws Exception {
+		EntityGen gen = new EntityGen();
+		gen.setPackageName("com.miragesql.miragesql.entity");
+		gen.setNameConverter(new DefaultNameConverter());
+		gen.setGenerationType(GenerationType.SEQUENCE);
+		gen.setDialect(new StandardDialect());
+
+		String result = gen.getEntitySource(conn, "BOOK", null, null,"xml");
+
+		String expect = new String(IOUtil.readStream(
+				EntityGenTest.class.getResourceAsStream("EntityGenTest_testGetXmlEntitySource.txt")),
+				"UTF-8").replace(STANDARD_LINE_SEPARATOR, ENVIRONMENT_LINE_SEPARATOR);
+
+		assertEquals(expect, result);
+	}
+
 }
